@@ -1,12 +1,13 @@
 #include <stdio.h>
-#include "driver/spi_master.h" // NOVO: Biblioteca do SPI do ESP-IDF
+#include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_bt.h"
 #include "esp_bt_device.h"
 #include "esp_bt_main.h"
 #include "esp_spp_api.h"
-#include "mcp2515.h" // Biblioteca MCP2515
+#include "mcp2515.h"  // Certifique-se de que está incluso
+#include "can.h"      // Se esse arquivo define `can_frame`, inclua aqui
 
 #define SPI_MISO 19
 #define SPI_MOSI 23
@@ -88,13 +89,11 @@ void setup_bluetooth()
     ESP_LOGI(TAG, "Bluetooth SPP initialized");
 }
 
+
 void app_main()
 {
     ESP_LOGI(TAG, "Starting CAN Bluetooth Adapter...");
 
-    setup_bluetooth();
-
-    // NOVO: Configuração do SPI para ESP-IDF
     spi_bus_config_t buscfg = {
         .miso_io_num = SPI_MISO,
         .mosi_io_num = SPI_MOSI,
@@ -105,49 +104,37 @@ void app_main()
     };
 
     spi_device_interface_config_t devcfg = {
-        .command_bits = 0,
-        .address_bits = 0,
-        .dummy_bits = 0,
-        .mode = 0, // Modo SPI (0, 1, 2, 3)
-        .duty_cycle_pos = 0,
-        .cs_ena_posttrans = 0,
-        .cs_ena_pretrans = 0,
-        .clock_speed_hz = 1000000, // 1MHz
-        .spics_io_num = SPI_CS,
-        .queue_size = 1,
-    };
+    .command_bits = 0,
+    .address_bits = 0,
+    .dummy_bits = 0,
+    .mode = 0,
+    .duty_cycle_pos = 0,
+    .cs_ena_pretrans = 0,  // Corrigindo a ordem correta
+    .cs_ena_posttrans = 0, // Corrigindo a ordem correta
+    .clock_speed_hz = 1000000,
+    .input_delay_ns = 0,  // Adicionando um campo necessário no ESP-IDF mais recente
+    .spics_io_num = SPI_CS,
+    .flags = 0,
+    .queue_size = 1,
+};
+
     spi_device_handle_t spi;
     ESP_ERROR_CHECK(spi_bus_initialize(HSPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
     ESP_ERROR_CHECK(spi_bus_add_device(HSPI_HOST, &devcfg, &spi));
 
-    // NOVO: Inicialização do MCP2515 usando ESP-IDF
-    mcp2515 mcp(spi, GPIO_NUM_5);
-    if (mcp.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == MCP2515_OK)
-    {
+    MCP2515 mcp(spi, GPIO_NUM_5);  // Nome correto da classe
+
+    if (mcp.setNormalMode() == MCP2515_OK) {
         ESP_LOGI(TAG, "MCP2515 initialized successfully!");
-    }
-    else
-    {
+    } else {
         ESP_LOGE(TAG, "Failed to initialize MCP2515");
         return;
     }
 
-    while (1)
-    {
-        struct can_frame frame;
-        if (mcp.readMessage(&frame) == MCP2515_OK)
-        {
-            ESP_LOGI(TAG, "CAN Message received: ID=0x%X, Data", frame.can_id);
-            for (int i = 0; i < frame.can_dlc; i++)
-            {
-                printf("%02X ", frame.data[i]);
-            }
-            printf("\n");
-
-            if (spp_client)
-            {
-                esp_spp_write(spp_client, frame.data, frame.can_dlc);
-            }
+    struct can_frame frame;  // Se der erro aqui, veja o próximo passo
+    while (1) {
+        if (mcp.readMessage((uint8_t*)&frame, &frame.can_dlc) == MCP2515_OK) {
+            ESP_LOGI(TAG, "CAN Message received: ID=0x%X", frame.can_id);
         }
         vTaskDelay(pdMS_TO_TICKS(100));
     }

@@ -3,3 +3,5 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES bt mcp2515 driver
 )
+
+set(CMAKE_CXX_STANDARD 17)
