@@ -8,6 +8,7 @@
 #include "esp_bt_device.h"
 #include "esp_bt_main.h"
 #include "esp_spp_api.h"
+#include "nvs_flash.h"
 
 #define TAG "CAN_BLUETOOTH"
 #define SPP_SERVER_NAME "ESP32_CAN_BT"
@@ -49,7 +50,19 @@ void spp_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
  */
 void setup_bluetooth()
 {
-    esp_err_t ret = esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+    esp_err_t ret;
+
+    ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    ESP_LOGI(TAG, "NVS initialized successfully");
+
+    ret = esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to release BLE memory: %s", esp_err_to_name(ret));
@@ -85,7 +98,7 @@ void setup_bluetooth()
     }
 
     esp_spp_register_callback(spp_callback);
-    esp_spp_enhanced_init(ESP_SPP_MODE_CB);
+    esp_spp_init(ESP_SPP_MODE_CB);
     esp_spp_start_srv(ESP_SPP_SEC_NONE, ESP_SPP_ROLE_SLAVE, 0, SPP_SERVER_NAME);
 
     ESP_LOGI(TAG, "Bluetooth SPP started");
@@ -113,12 +126,12 @@ void setup_can()
         .queue_size = 1,
     };
 
-    spi_device_handle_t spi;
+    // spi_device_handle_t spi;
     ESP_ERROR_CHECK(spi_bus_initialize(HSPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
-    ESP_ERROR_CHECK(spi_bus_add_device(HSPI_HOST, &devcfg, &spi));
+    ESP_ERROR_CHECK(spi_bus_add_device(HSPI_HOST, &devcfg, &(mcp->spi)));
 
     // Initialize MCP2515
-    mcp->spi = spi;
+    // mcp->spi = spi;
     if (MCP2515_init(&mcp) == ESP_OK)
     {
         ESP_LOGI(TAG, "MCP2515 successfully initialized!");
@@ -129,8 +142,16 @@ void setup_can()
         return;
     }
 
+    // uint8_t reg_value;
+    // reg_value = MCP2515_readRegister(MCP_CANSTAT);
+    // ESP_LOGI(TAG, "MCP2515 CANSTAT register: 0x%X", reg_value);
+
+    ESP_LOGI(TAG, "Setting bitrate and setting normal mode...");
+
     MCP2515_setBitrate(CAN_500KBPS, MCP_8MHZ);
     MCP2515_setNormalMode(&mcp);
+
+    ESP_LOGI(TAG, "Birate and normal mode setted successfully!");
 }
 
 /**
@@ -139,6 +160,12 @@ void setup_can()
 void app_main()
 {
     ESP_LOGI(TAG, "Starting ESP32 CAN-to-Bluetooth Adapter");
+
+#ifdef CONFIG_CLASSIC_BT_ENABLED
+    ESP_LOGI(TAG, "Classic Bluetooth is ENABLED!");
+#else
+    ESP_LOGE(TAG, "ERROR: Classic bluetooth is DISABLED in menuconfig!");
+#endif
 
     setup_bluetooth();
     setup_can();
