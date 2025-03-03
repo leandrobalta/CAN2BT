@@ -110,29 +110,45 @@ void setup_bluetooth()
 void setup_can()
 {
     // Configure SPI
-    spi_bus_config_t buscfg = {
+    // spi_bus_config_t buscfg = {
+    //     .miso_io_num = SPI_MISO,
+    //     .mosi_io_num = SPI_MOSI,
+    //     .sclk_io_num = SPI_CLK,
+    //     .quadwp_io_num = -1,
+    //     .quadhd_io_num = -1,
+    //     .max_transfer_sz = 64,
+    // };
+
+    // spi_device_interface_config_t devcfg = {
+    //     .clock_speed_hz = 1000000, // 1 MHz
+    //     .mode = 0,
+    //     .spics_io_num = SPI_CS,
+    //     .queue_size = 1,
+    // };
+
+    spi_bus_config_t bus_cfg = {
         .miso_io_num = SPI_MISO,
         .mosi_io_num = SPI_MOSI,
         .sclk_io_num = SPI_CLK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
-        .max_transfer_sz = 64,
+        .max_transfer_sz = 4096 // no limit
     };
 
-    spi_device_interface_config_t devcfg = {
-        .clock_speed_hz = 1000000, // 1 MHz
-        .mode = 0,
+    // Define MCP2515 SPI device configuration
+    spi_device_interface_config_t dev_cfg = {
+        .mode = 0,                 // (0,0)
+        .clock_speed_hz = 1000000, // 1mhz
         .spics_io_num = SPI_CS,
-        .queue_size = 1,
-    };
+        .queue_size = 128};
 
     // spi_device_handle_t spi;
-    ESP_ERROR_CHECK(spi_bus_initialize(HSPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
-    ESP_ERROR_CHECK(spi_bus_add_device(HSPI_HOST, &devcfg, &(mcp->spi)));
+    ESP_ERROR_CHECK(spi_bus_initialize(HSPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO));
+    ESP_ERROR_CHECK(spi_bus_add_device(HSPI_HOST, &dev_cfg, &mcp->spi));
 
     // Initialize MCP2515
     // mcp->spi = spi;
-    if (MCP2515_init(&mcp) == ESP_OK)
+    if (MCP2515_init() == ESP_OK)
     {
         ESP_LOGI(TAG, "MCP2515 successfully initialized!");
     }
@@ -146,12 +162,18 @@ void setup_can()
     // reg_value = MCP2515_readRegister(MCP_CANSTAT);
     // ESP_LOGI(TAG, "MCP2515 CANSTAT register: 0x%X", reg_value);
 
-    ESP_LOGI(TAG, "Setting bitrate and setting normal mode...");
+    ESP_LOGI(TAG, "mcp2515 changed. finishing setting...");
 
-    MCP2515_setBitrate(CAN_500KBPS, MCP_8MHZ);
-    MCP2515_setNormalMode(&mcp);
+    MCP2515_reset();
+    ESP_LOGI(TAG, "MCP2515 reseted");
 
-    ESP_LOGI(TAG, "Birate and normal mode setted successfully!");
+    MCP2515_setBitrate(CAN_1000KBPS, MCP_8MHZ);
+    ESP_LOGI(TAG, "bitrate setted successfully!");
+
+    MCP2515_setNormalMode();
+    ESP_LOGI(TAG, "setted normal mode successfully!");
+
+    ESP_LOGI(TAG, "Setup CAN finished");
 }
 
 /**
